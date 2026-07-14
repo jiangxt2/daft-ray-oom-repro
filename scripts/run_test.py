@@ -253,52 +253,7 @@ def _collect_head_logs(run_dir: Path, label: str):
 # We check BOTH the top-level exception type AND the .cause chain.
 
 
-def _classify_error(e: Exception) -> str:
-    """Classify an exception as OOM or other error.
-
-    Checks the full exception chain: type(e), e.cause, e.__cause__.
-    """
-    etype = type(e).__name__
-    emsg = str(e)
-
-    # Direct type check
-    if "OutOfMemory" in etype:
-        return "OOM"
-
-    # Check .cause (RayTaskError wraps the real error in .cause)
-    cause = getattr(e, "cause", None)
-    if cause is not None:
-        cause_type = type(cause).__name__
-        cause_msg = str(cause)
-        if "OutOfMemory" in cause_type:
-            return "OOM"
-        if "low on memory" in cause_msg.lower():
-            return "OOM"
-        if "ActorDied" in cause_type:
-            return "OOM"
-
-    # Check __cause__ chain
-    inner = getattr(e, "__cause__", None)
-    if inner is not None:
-        inner_type = type(inner).__name__
-        if "OutOfMemory" in inner_type:
-            return "OOM"
-
-    # Check message for memory kill patterns
-    if "low on memory" in emsg.lower():
-        return "OOM"
-    if "memory on the node" in emsg.lower():
-        return "OOM"
-    if "ActorDied" in etype:
-        return "OOM"
-
-    # RayTaskError wrapping something OOM-related
-    if etype == "RayTaskError":
-        # The string representation often includes the cause class name
-        if "OutOfMemory" in emsg:
-            return "OOM"
-
-    return f"ERROR({etype})"
+from utils import classify_error as _classify_error
 
 
 # ── Scenario runner ──
