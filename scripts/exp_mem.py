@@ -27,6 +27,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from mem_profile import MemoryProfiler
 
+
+def _classify_error(e: Exception) -> str:
+    """Classify exception as OOM or other. Checks .cause chain (RayTaskError wrapping)."""
+    etype = type(e).__name__
+    if "OutOfMemory" in etype:
+        return "OOM"
+    cause = getattr(e, "cause", None)
+    if cause is not None:
+        cause_type = type(cause).__name__
+        if "OutOfMemory" in cause_type:
+            return "OOM"
+        if "ActorDied" in cause_type:
+            return "OOM"
+    if "low on memory" in str(e).lower():
+        return "OOM"
+    if etype == "RayTaskError" and "OutOfMemory" in str(e):
+        return "OOM"
+    return f"ERROR({etype})"
+
 S3_ENDPOINT = os.environ["S3_ENDPOINT"]
 S3_KEY = os.environ["MINIO_USER"]
 S3_SECRET = os.environ["MINIO_PASSWORD"]
@@ -103,8 +122,7 @@ def run_one(dataset: str, split: bool, max_files: int,
         error = None
     except Exception as e:
         elapsed = time.time() - t0
-        status = "OOM" if "OutOfMemory" in str(type(e).__name__) or \
-                          "memory" in str(e).lower() else f"ERROR({type(e).__name__})"
+        status = _classify_error(e)
         error = str(e)[:500]
         rows = 0
 

@@ -52,7 +52,9 @@ collect_worker_logs() {
             "ray-head:${run_dir}/${worker}_${ftype}_${label}_${ts}.txt" 2>/dev/null || true
     done
 
-    rm -f /tmp/_w_${worker}_*.txt
+    for f in /tmp/_w_${worker}_*.txt; do
+        [ -f "$f" ] && trash "$f"
+    done
 }
 
 # ── Main ──
@@ -74,7 +76,10 @@ else
 fi
 
 # Clear previous results
-docker compose exec ray-head rm -rf "$LOG_DIR" 2>/dev/null || true
+docker compose exec ray-head python3 -c "
+import shutil
+shutil.rmtree('$LOG_DIR', ignore_errors=True)
+" 2>/dev/null || true
 docker compose exec ray-head mkdir -p "$LOG_DIR"
 
 TOTAL=$(( ${#DATASETS[@]} * 2 * 3 ))  # datasets × 2 configs × 3 iterations

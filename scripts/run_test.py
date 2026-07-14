@@ -143,12 +143,14 @@ def _read_cgroup_memory() -> dict:
             with open(path) as f:
                 val = f.read().strip()
             if fname == "memory.stat":
-                # Parse key-value pairs, keep top-level total_* lines
+                # Parse space-separated key-value pairs (cgroup v1 format:
+                # "total_cache 123\ntotal_rss 456\n..."), keep total_* lines.
                 total = {}
                 for line in val.split("\n"):
-                    if "=" not in line:
+                    parts = line.split()
+                    if len(parts) < 2:
                         continue
-                    k, v = line.split("=", 1)
+                    k, v = parts[0], parts[1]
                     if k.startswith("total_"):
                         total[k] = int(v)
                 info[fname] = total
@@ -421,7 +423,6 @@ def run_single(dataset: str, config: str, iteration: int, log_dir: str) -> dict:
     result["config"] = cfg_label
     result["iteration"] = iteration
     result["run_id"] = run_id
-    logger.log(result)
 
     # Collect post-test state
     _collect_head_logs(run_dir, "post")

@@ -123,7 +123,10 @@ def generate(dataset_name: str, num_rows: int, rows_per_file: int = rows_per_fil
     print(f"Done. {files} file(s), {total_compressed_mb:.0f} MB total "
           f"({avg_mb:.0f} MB avg/file), "
           f"{num_rows:,} rows in s3://{BUCKET}/{dataset_name}_data_*")
-    TMP_DIR.rmdir()
+    try:
+        TMP_DIR.rmdir()
+    except OSError:
+        pass  # directory may have leftover files from interrupted runs
 
 
 def check_existing(dataset: str) -> int:
