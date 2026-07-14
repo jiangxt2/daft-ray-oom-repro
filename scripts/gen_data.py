@@ -40,7 +40,6 @@ PRESETS = {
     "100m":     (100_000_000, 12_500_000, "8 files,  ~3.4 GB compressed"),
     "200m":     (200_000_000, 12_500_000, "16 files, ~6.8 GB compressed"),
     "200m-8f":  (200_000_000, 25_000_000, "8 files,  ~6.8 GB (25M rows/file)"),
-    "200m-4f":  (200_000_000, 50_000_000, "4 files,  ~6.8 GB (50M rows/file)"),
 }
 
 
@@ -127,6 +126,30 @@ def generate(dataset_name: str, num_rows: int, rows_per_file: int = rows_per_fil
     TMP_DIR.rmdir()
 
 
+def check_existing(dataset: str) -> int:
+    """Return number of existing files for this dataset in MinIO."""
+    fs = s3fs.S3FileSystem(
+        key=S3_KEY, secret=S3_SECRET,
+        client_kwargs={"endpoint_url": S3_ENDPOINT},
+    )
+    return len(fs.glob(f"{BUCKET}/{dataset}_data_*.parquet"))
+
+
+def _prompt_overwrite(dataset: str) -> bool:
+    """Ask user whether to overwrite existing data. Returns True if yes."""
+    existing = check_existing(dataset)
+    if existing == 0:
+        return True
+    print(f"Dataset '{dataset}' already exists ({existing} file(s) in "
+          f"s3://{BUCKET}/).")
+    try:
+        answer = input("Overwrite? [y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("Aborted.")
+        sys.exit(1)
+    return answer in ("y", "yes")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate test Parquet data for Daft OOM repro"
@@ -136,16 +159,19 @@ def main():
     parser.add_argument("--200m", action="store_true")
     parser.add_argument("--200m-8f", action="store_true",
                         help="200M rows, 8 files (25M rows/file)")
-    parser.add_argument("--200m-4f", action="store_true",
-                        help="200M rows, 4 files (50M rows/file)")
+    parser.add_argument("--overwrite", action="store_true",
+                        help="Skip prompt and regenerate data")
     args = parser.parse_args()
 
     for flag, (rows, rpf, desc) in PRESETS.items():
         if getattr(args, flag.replace("-", "_"), False):
+            if not args.overwrite and not _prompt_overwrite(flag):
+                print("Skipped.")
+                return
             generate(flag, rows, rows_per_file=rpf)
             return
 
-    print("Usage: gen_data.py --50m | --100m | --200m | --200m-8f | --200m-4f")
+    print("Usage: gen_data.py --50m | --100m | --200m | --200m-8f")
     for flag, (rows, rpf, desc) in PRESETS.items():
         files = rows // rpf
         rg_rows = rpf // RGS_PER_FILE

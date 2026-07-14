@@ -43,7 +43,6 @@ PRESETS = {
     "100m": (100_000_000, 8,   "~5 GB"),
     "200m":     (200_000_000, 16, "~6.8 GB"),
     "200m-8f":  (200_000_000, 8,  "~6.8 GB (25M rows/file)"),
-    "200m-4f":  (200_000_000, 4,  "~6.8 GB (50M rows/file)"),
 }
 
 ITERATIONS = 3
@@ -85,7 +84,8 @@ def check_cluster() -> bool:
 
 # ── Data ──
 
-def _check_or_gen_data(dataset: str) -> int:
+def _check_data(dataset: str) -> int:
+    """Verify data exists in MinIO. Does NOT generate — use gen_data.py for that."""
     import s3fs
     fs = s3fs.S3FileSystem(
         key=S3_KEY, secret=S3_SECRET,
@@ -98,16 +98,11 @@ def _check_or_gen_data(dataset: str) -> int:
         print(f"  Data found: {len(existing)} file(s) in s3://{BUCKET}/")
         return expected_files
 
-    if len(existing) > 0:
-        print(f"  Found {len(existing)} file(s), expected {expected_files}. "
-              f"Regenerating ...")
-        for f in existing:
-            fs.rm(f)
-
-    print(f"  Generating {dataset} ({num_rows:,} rows, {size_desc}) ...\n")
-    from gen_data import generate
-    generate(dataset, num_rows)
-    return expected_files
+    print(f"ERROR: Dataset '{dataset}' not found. Expected {expected_files} "
+          f"file(s), found {len(existing)}.")
+    print(f"Run: docker compose exec ray-head python /tmp/scripts/gen_data.py "
+          f"--{dataset}")
+    sys.exit(1)
 
 
 # ── Result logging ──
@@ -405,7 +400,7 @@ def run_single(dataset: str, config: str, iteration: int, log_dir: str) -> dict:
     print(f"  Dataset: {dataset}  config={config}  iteration={iteration}/{ITERATIONS}")
     print(f"{'='*60}")
 
-    _check_or_gen_data(dataset)
+    _check_data(dataset)
     glob_pattern = _glob_pattern(dataset)
 
     if config == "no_split":
@@ -455,7 +450,7 @@ def run_all_for_datasets(datasets: list[str], log_dir: str):
         print(f"  Dataset: {dataset}  ({num_rows:,} rows, {files} files, "
               f"{size_desc})")
         print(f"{'='*60}")
-        _check_or_gen_data(dataset)
+        _check_data(dataset)
         glob_pattern = _glob_pattern(dataset)
 
         configs = [
@@ -552,11 +547,10 @@ def main():
     parser.add_argument("--100m", action="store_true")
     parser.add_argument("--200m", action="store_true")
     parser.add_argument("--200m-8f", action="store_true")
-    parser.add_argument("--200m-4f", action="store_true")
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--single", action="store_true",
                         help="Run a single iteration (use with --dataset, --config, --iteration)")
-    parser.add_argument("--dataset", choices=["50m", "100m", "200m", "200m-8f", "200m-4f"])
+    parser.add_argument("--dataset", choices=["50m", "100m", "200m", "200m-8f"])
     parser.add_argument("--config", choices=["no_split", "split"])
     parser.add_argument("--iteration", type=int, choices=[1, 2, 3])
     parser.add_argument("--log-dir", default="/tmp/daft-oom-results",
@@ -574,14 +568,14 @@ def main():
     # ── Full-suite mode ──
     datasets = []
     if args.all:
-        datasets = ["50m", "100m", "200m", "200m-8f", "200m-4f"]
+        datasets = ["50m", "100m", "200m", "200m-8f"]
     else:
-        for flag in ("50m", "100m", "200m", "200m-8f", "200m-4f"):
+        for flag in ("50m", "100m", "200m", "200m-8f"):
             if getattr(args, flag.replace("-", "_"), False):
                 datasets.append(flag)
 
     if not datasets:
-        print("Usage: run_test.py --50m | --100m | --200m | --200m-8f | --200m-4f | --all")
+        print("Usage: run_test.py --50m | --100m | --200m | --200m-8f | --all")
         print("       run_test.py --single --dataset X --config Y --iteration Z")
         sys.exit(1)
 
