@@ -1,0 +1,63 @@
+services:
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-minioadmin}
+    command: server /data --console-address ":9001"
+    networks:
+      - oom-test
+
+  ray-head:
+    build: .
+    command: >
+      bash -c "ray start --head --port=6379 --num-cpus=0 --include-dashboard=false &&
+      echo 'Ray head ready.' &&
+      sleep infinity"
+    environment:
+      MINIO_USER: ${MINIO_USER:-minioadmin}
+      MINIO_PASSWORD: ${MINIO_PASSWORD:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-daft-oom-test}
+      S3_ENDPOINT: http://minio:9000
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - ./scripts:/tmp/scripts:ro
+    shm_size: '1.5gb'
+    mem_limit: ${RAY_HEAD_MEM_LIMIT:-4g}
+    depends_on:
+      - minio
+    networks:
+      - oom-test
+
+  ray-worker01:
+    build: .
+    command: >
+      bash -c "ray start --address=ray-head:6379 --num-cpus=4 &&
+      echo 'Ray worker01 ready.' &&
+      sleep infinity"
+    environment:
+      AWS_DEFAULT_REGION: us-east-1
+    shm_size: '1.5gb'
+    mem_limit: ${RAY_WORKER_MEM_LIMIT:-4g}
+    depends_on:
+      - ray-head
+    networks:
+      - oom-test
+
+  ray-worker02:
+    build: .
+    command: >
+      bash -c "ray start --address=ray-head:6379 --num-cpus=4 &&
+      echo 'Ray worker02 ready.' &&
+      sleep infinity"
+    environment:
+      AWS_DEFAULT_REGION: us-east-1
+    shm_size: '1.5gb'
+    mem_limit: ${RAY_WORKER_MEM_LIMIT:-4g}
+    depends_on:
+      - ray-head
+    networks:
+      - oom-test
+
+networks:
+  oom-test:
